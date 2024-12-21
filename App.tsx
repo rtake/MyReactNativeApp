@@ -1,59 +1,14 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
-import React from 'react';
-import type {PropsWithChildren} from 'react';
+import notifee, {AndroidImportance} from '@notifee/react-native'; // 通知ライブラリをインポート
+import messaging from '@react-native-firebase/messaging';
+import React, {useEffect, useState} from 'react';
 import {
+  Alert,
   SafeAreaView,
   ScrollView,
   StatusBar,
-  StyleSheet,
-  Text,
   useColorScheme,
-  View,
 } from 'react-native';
-
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
-
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
-
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
+import {Colors, Header} from 'react-native/Libraries/NewAppScreen';
 
 function App(): React.JSX.Element {
   const isDarkMode = useColorScheme() === 'dark';
@@ -61,6 +16,68 @@ function App(): React.JSX.Element {
   const backgroundStyle = {
     backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
   };
+
+  const [fcmToken, setFcmToken] = useState<string | null>(null);
+
+  // 通知チャネルの作成 (Android専用)
+  const createNotificationChannel = async () => {
+    await notifee.createChannel({
+      id: 'default',
+      name: 'Default Channel',
+      importance: AndroidImportance.HIGH,
+    });
+  };
+
+  // FCMトークンを初期化して取得
+  const initializeMessaging = async () => {
+    try {
+      const token = await messaging().getToken();
+      setFcmToken(token);
+      console.log('FCM Token:', token);
+    } catch (error) {
+      console.error('FCMトークンの取得エラー:', error);
+    }
+
+    // フォアグラウンドで通知を受信
+    messaging().onMessage(async remoteMessage => {
+      console.log('Foreground Notification:', remoteMessage);
+      await notifee.displayNotification({
+        title: remoteMessage.notification?.title,
+        body: remoteMessage.notification?.body,
+        android: {
+          channelId: 'default',
+        },
+      });
+    });
+  };
+
+  // アプリがバックグラウンドまたはクローズド状態での通知処理
+  const setupBackgroundNotifications = () => {
+    // アプリがバックグラウンドの時に通知を受信
+    messaging().onNotificationOpenedApp(remoteMessage => {
+      console.log('Notification opened from background:', remoteMessage);
+      Alert.alert('通知をクリックしました', JSON.stringify(remoteMessage));
+    });
+
+    // アプリが完全に閉じた状態で通知を受信
+    messaging()
+      .getInitialNotification()
+      .then(remoteMessage => {
+        if (remoteMessage) {
+          console.log('Notification opened from quit state:', remoteMessage);
+          Alert.alert(
+            '通知をクリックしてアプリが起動しました',
+            JSON.stringify(remoteMessage),
+          );
+        }
+      });
+  };
+
+  useEffect(() => {
+    createNotificationChannel(); // Androidで通知チャネルを作成
+    initializeMessaging(); // 初期化処理
+    setupBackgroundNotifications(); // バックグラウンド処理をセットアップ
+  }, []);
 
   return (
     <SafeAreaView style={backgroundStyle}>
@@ -72,47 +89,9 @@ function App(): React.JSX.Element {
         contentInsetAdjustmentBehavior="automatic"
         style={backgroundStyle}>
         <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
-  },
-});
 
 export default App;
